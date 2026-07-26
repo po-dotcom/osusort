@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>osu! Player Sorter</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 14px;
+    color: #222;
+    background: #fff;
+    max-width: 700px;
+    margin: 20px auto;
+    padding: 0 15px;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  p {
+    line-height: 1.5;
+    margin: 8px 0;
+  }
+  a { color: #0000ee; }
+
+  hr {
+    border: none;
+    border-top: 1px solid #999;
+    margin: 15px 0;
+  }
+
+  button {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 6px 14px;
+    margin: 4px 4px 4px 0;
+    border: 1px solid #888;
+    background: #eee;
+    cursor: pointer;
+  }
+  button:hover { background: #ddd; }
+  button:disabled { color: #999; cursor: default; background: #f2f2f2; }
+
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* --- sorting screen --- */
+  .progress-text {
+    font-size: 12px;
+    color: #555;
+    margin-bottom: 4px;
+  }
+  .progress-bar {
+    width: 100%;
+    height: 14px;
+    border: 1px solid #999;
+    background: #f2f2f2;
+    margin-bottom: 15px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: #99c2ff;
+    width: 0%;
+  }
+
+  .versus {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    margin-bottom: 12px;
+  }
+  .versus .col {
+    display: table-cell;
+    width: 45%;
+    vertical-align: top;
+    text-align: center;
+    padding: 10px;
+    border: 1px solid #999;
+    cursor: pointer;
+  }
+  .versus .col:hover { background: #f5f5f5; }
+  .versus .vs {
+    display: table-cell;
+    width: 10%;
+    text-align: center;
+    vertical-align: middle;
+    font-weight: bold;
+    color: #999;
+  }
+  .name {
+    font-size: 16px;
+    font-weight: bold;
+    margin: 30px 0 4px;
+    word-break: break-word;
+  }
+  .kb-hint {
+    font-size: 11px;
+    color: #999;
+  }
+
+  .center { text-align: center; }
+
+  /* --- results screen --- */
+  table.results {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0 20px;
+  }
+  table.results td, table.results th {
+    border: 1px solid #ccc;
+    padding: 4px 8px;
+    text-align: left;
+  }
+  table.results th {
+    background: #eee;
+  }
+  table.results td.rank {
+    width: 40px;
+    text-align: right;
+    color: #666;
+  }
+
+  .roster-list {
+    columns: 3;
+    -webkit-columns: 3;
+    -moz-columns: 3;
+    font-size: 12px;
+    color: #444;
+    margin: 10px 0;
+  }
+  @media (max-width: 500px) {
+    .roster-list { columns: 2; }
+  }
+</style>
+</head>
+<body>
+
+<h1>osu! Player Sorter</h1>
+<p>Pick your favorite osu! top players by comparing them two at a time. 122 players loaded.</p>
+<hr>
+
+<!-- INTRO SCREEN -->
+<section class="screen active" id="screen-intro">
+  <p>Click on the player you like better out of each pair, or tie them if you like them equally or don't know them. With 122 players you'll get around 800-850 picks, so it'll take a while.</p>
+  <p><strong>Keyboard controls:</strong> Left Arrow / H (pick left), Right Arrow / L (pick right), Up Arrow / K (tie), Down Arrow / J (undo), S (save progress).</p>
+  <p>
+    <button id="btnStart">Start Sorting</button>
+    <button id="btnResume" style="display:none;">Resume Saved Progress</button>
+    <button id="btnReset">Clear Save Data</button>
+  </p>
+  <hr>
+  <p>Players in this sort:</p>
+  <div class="roster-list" id="rosterPreview"></div>
+</section>
+
+<!-- SORTING SCREEN -->
+<section class="screen" id="screen-sort">
+  <div class="progress-text"><span id="progNum">0</span> / <span id="progDen">0</span> picks (estimated)</div>
+  <div class="progress-bar"><div class="progress-fill" id="progFill"></div></div>
+
+  <div class="versus">
+    <div class="col" id="cardLeft">
+      <div class="name" id="nameLeft"></div>
+      <div class="kb-hint">&larr; or H</div>
+    </div>
+    <div class="vs">vs</div>
+    <div class="col" id="cardRight">
+      <div class="name" id="nameRight"></div>
+      <div class="kb-hint">&rarr; or L</div>
+    </div>
+  </div>
+
+  <div class="center">
+    <button id="btnTie">Tie (K)</button>
+    <button id="btnUndo">Undo (J)</button>
+    <button id="btnSave">Save Progress</button>
+  </div>
+</section>
+
+<!-- RESULTS SCREEN -->
+<section class="screen" id="screen-results">
+  <p><strong>Your ranking is ready.</strong> Full list below, best to worst.</p>
+  <p>
+    <button id="btnGenLink">Generate Shareable Link</button>
+    <button id="btnGenText">Copy as Text List</button>
+    <button id="btnRestart">Start Over</button>
+  </p>
+  <table class="results" id="resultsTable">
+    <thead><tr><th>#</th><th>Player</th></tr></thead>
+    <tbody id="resultsBody"></tbody>
+  </table>
+</section>
+
+<hr>
+<p style="font-size:12px; color:#666;">
+  Inspired by <a href="https://github.com/execfera/charasort" target="_blank" rel="noopener">charasort</a>. Not affiliated with osu! or ppy.
+</p>
+
+<script>
+(function(){
+  "use strict";
+
+  const PLAYERS = [{"name": "im a fancy lad", "id": 0}, {"name": "Varvalian", "id": 1}, {"name": "filsdelama", "id": 2}, {"name": "Abyssal", "id": 3}, {"name": "Freddie Benson", "id": 4}, {"name": "Informous", "id": 5}, {"name": "Dustice", "id": 6}, {"name": "azr8", "id": 7}, {"name": "MouseEasy", "id": 8}, {"name": "emilia", "id": 9}, {"name": "Musty", "id": 10}, {"name": "Rupertion", "id": 11}, {"name": "MillhioreF", "id": 12}, {"name": "mrekk", "id": 13}, {"name": "Cookiezi", "id": 14}, {"name": "rrtyui", "id": 15}, {"name": "WWW", "id": 16}, {"name": "WhiteCat", "id": 17}, {"name": "Rafis", "id": 18}, {"name": "Azer", "id": 19}, {"name": "maliszewski", "id": 20}, {"name": "GN", "id": 21}, {"name": "index", "id": 22}, {"name": "fedoragoose", "id": 23}, {"name": "criller", "id": 24}, {"name": "CookieNia", "id": 25}, {"name": "Yaong", "id": 26}, {"name": "Adamqs", "id": 27}, {"name": "Axarious", "id": 28}, {"name": "Riviclia", "id": 29}, {"name": "oxycodone", "id": 30}, {"name": "Xilver", "id": 31}, {"name": "kuu01", "id": 32}, {"name": "Emperorpenguin83", "id": 33}, {"name": "Elysion", "id": 34}, {"name": "cptnXn", "id": 35}, {"name": "hyeok2044", "id": 36}, {"name": "mcy4", "id": 37}, {"name": "worst hr player", "id": 38}, {"name": "aetrna", "id": 39}, {"name": "idke", "id": 40}, {"name": "Aricin", "id": 41}, {"name": "EZChamp", "id": 42}, {"name": "rustbell", "id": 43}, {"name": "TheLewa", "id": 44}, {"name": "hvick225", "id": 45}, {"name": "Doomsday", "id": 46}, {"name": "Rohulk", "id": 47}, {"name": "Mafham", "id": 48}, {"name": "kirby mix", "id": 49}, {"name": "SapphireGhost", "id": 50}, {"name": "mugio3", "id": 51}, {"name": "Reimu-Desu", "id": 52}, {"name": "Zirba", "id": 53}, {"name": "haga1115", "id": 54}, {"name": "Kama", "id": 55}, {"name": "ceptin", "id": 56}, {"name": "Ner0", "id": 57}, {"name": "MoeYandere", "id": 58}, {"name": "Woey", "id": 59}, {"name": "Plasma", "id": 60}, {"name": "Trail Mix", "id": 61}, {"name": "Vaxei", "id": 62}, {"name": "firebat92", "id": 63}, {"name": "Niko", "id": 64}, {"name": "Rucker", "id": 65}, {"name": "Dungeon", "id": 66}, {"name": "Bikko", "id": 67}, {"name": "sayonara-bye", "id": 68}, {"name": "Toy", "id": 69}, {"name": "HappyStick", "id": 70}, {"name": "xootynator", "id": 71}, {"name": "Bahamete", "id": 72}, {"name": "milosz", "id": 73}, {"name": "MightyDoc", "id": 74}, {"name": "Bartek", "id": 75}, {"name": "majoreh", "id": 76}, {"name": "kablaze", "id": 77}, {"name": "Aireu", "id": 78}, {"name": "zeluaR", "id": 79}, {"name": "Dereban", "id": 80}, {"name": "Dumii", "id": 81}, {"name": "Serena", "id": 82}, {"name": "_Shield", "id": 83}, {"name": "Bonk", "id": 84}, {"name": "milktea0019", "id": 85}, {"name": "ASecretBox", "id": 86}, {"name": "Karcher", "id": 87}, {"name": "decaten", "id": 88}, {"name": "Rektygon", "id": 89}, {"name": "Chicony", "id": 90}, {"name": "enri", "id": 91}, {"name": "gnahus", "id": 92}, {"name": "lifeline", "id": 93}, {"name": "Akolibed", "id": 94}, {"name": "Arnold24x24", "id": 95}, {"name": "chicken_10", "id": 96}, {"name": "shimon", "id": 97}, {"name": "Intercambing", "id": 98}, {"name": "Dsan", "id": 99}, {"name": "Delis", "id": 100}, {"name": "Totoki", "id": 101}, {"name": "KeigoClear", "id": 102}, {"name": "Micca", "id": 103}, {"name": "obtio", "id": 104}, {"name": "BDDav", "id": 105}, {"name": "DanyL", "id": 106}, {"name": "Monko2K", "id": 107}, {"name": "fragranceofpage", "id": 108}, {"name": "Zoomer", "id": 109}, {"name": "Ekoro", "id": 110}, {"name": "Mathi", "id": 111}, {"name": "Utami", "id": 112}, {"name": "badeu", "id": 113}, {"name": "RyuK", "id": 114}, {"name": "Bubbleman", "id": 115}, {"name": "FlyingTuna", "id": 116}, {"name": "FGSky", "id": 117}, {"name": "Red_Pixel", "id": 118}, {"name": "Umbre", "id": 119}, {"name": "ThePoon", "id": 120}, {"name": "BoshyMan741", "id": 121}];
+
+  const N = PLAYERS.length;
+  const STORAGE_KEY = "osuranksort_save_v1";
+
+  // ---- merge sort with pairwise human comparisons ----
+  function MergeSorter(items){
+    this.items = items.slice();
+    this.n = this.items.length;
+    this.width = 1;
+    this.src = this.items.slice();
+    this.buffer = new Array(this.n);
+    this.left = 0;
+    this.mid = 0;
+    this.right = 0;
+    this.i = 0; this.j = 0; this.k = 0;
+    this.done = false;
+    this.history = [];
+    this._advanceToNextMerge();
+  }
+  MergeSorter.prototype._snapshot = function(){
+    return {
+      width:this.width, src:this.src.slice(), buffer:this.buffer.slice(),
+      left:this.left, mid:this.mid, right:this.right,
+      i:this.i, j:this.j, k:this.k, done:this.done
+    };
+  };
+  MergeSorter.prototype._restore = function(s){
+    this.width=s.width; this.src=s.src.slice(); this.buffer=s.buffer.slice();
+    this.left=s.left; this.mid=s.mid; this.right=s.right;
+    this.i=s.i; this.j=s.j; this.k=s.k; this.done=s.done;
+  };
+  MergeSorter.prototype._advanceToNextMerge = function(){
+    while(true){
+      if(this.width >= this.n){ this.done = true; return; }
+      if(this.left >= this.n){
+        this.src = this.buffer.slice();
+        this.width *= 2;
+        this.left = 0;
+        continue;
+      }
+      this.mid = Math.min(this.left + this.width, this.n);
+      this.right = Math.min(this.left + 2*this.width, this.n);
+      if(this.mid >= this.right){
+        for(let x=this.left;x<this.right;x++) this.buffer[x] = this.src[x];
+        this.left = this.right;
+        continue;
+      }
+      this.i = this.left; this.j = this.mid; this.k = this.left;
+      return;
+    }
+  };
+  MergeSorter.prototype.current = function(){
+    if(this.done) return null;
+    if(this.i >= this.mid){ this._finishMergeFill(); return this.current(); }
+    if(this.j >= this.right){ this._finishMergeFill(); return this.current(); }
+    return { a:this.src[this.i], b:this.src[this.j] };
+  };
+  MergeSorter.prototype._finishMergeFill = function(){
+    while(this.i < this.mid) this.buffer[this.k++] = this.src[this.i++];
+    while(this.j < this.right) this.buffer[this.k++] = this.src[this.j++];
+    this.left = this.right;
+    this._advanceToNextMerge();
+  };
+  MergeSorter.prototype.decide = function(decision){
+    this.history.push(this._snapshot());
+    if(decision === 'a'){
+      this.buffer[this.k++] = this.src[this.i++];
+    } else if(decision === 'b'){
+      this.buffer[this.k++] = this.src[this.j++];
+    } else {
+      this.buffer[this.k++] = this.src[this.i++];
+    }
+    if(this.i >= this.mid || this.j >= this.right){
+      this._finishMergeFill();
+    }
+  };
+  MergeSorter.prototype.undo = function(){
+    if(this.history.length === 0) return false;
+    this._restore(this.history.pop());
+    return true;
+  };
+  MergeSorter.prototype.result = function(){
+    return this.src.slice();
+  };
+  MergeSorter.prototype.serialize = function(){
+    return {
+      width:this.width, src:this.src, buffer:this.buffer,
+      left:this.left, mid:this.mid, right:this.right,
+      i:this.i, j:this.j, k:this.k, done:this.done, n:this.n,
+      history:this.history
+    };
+  };
+  MergeSorter.deserialize = function(items, s){
+    const m = Object.create(MergeSorter.prototype);
+    m.items = items.slice();
+    m.n = s.n;
+    m.width=s.width; m.src=s.src.slice(); m.buffer=s.buffer.slice();
+    m.left=s.left; m.mid=s.mid; m.right=s.right;
+    m.i=s.i; m.j=s.j; m.k=s.k; m.done=s.done;
+    m.history = s.history || [];
+    return m;
+  };
+
+  const ESTIMATED_TOTAL = Math.ceil(N * Math.log2(N)) || 1;
+
+  let sorter = null;
+  let comparisonsMade = 0;
+  let orderSeed = [];
+
+  function shuffledIndices(){
+    const arr = PLAYERS.map((_,i)=>i);
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]] = [arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  function el(id){ return document.getElementById(id); }
+
+  function showScreen(name){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    el('screen-'+name).classList.add('active');
+  }
+
+  function renderRosterPreview(){
+    const box = el('rosterPreview');
+    box.innerHTML = PLAYERS.map(p=>escapeHtml(p.name)).join('<br>');
+  }
+
+  function updateProgress(){
+    const pct = Math.min(100, Math.round((comparisonsMade/ESTIMATED_TOTAL)*100));
+    el('progFill').style.width = pct+'%';
+    el('progNum').textContent = comparisonsMade;
+    el('progDen').textContent = ESTIMATED_TOTAL;
+  }
+
+  function renderCurrentPair(){
+    const cur = sorter.current();
+    if(!cur){
+      finishSorting();
+      return;
+    }
+    el('nameLeft').textContent = cur.a.name;
+    el('nameRight').textContent = cur.b.name;
+    updateProgress();
+  }
+
+  function startSorting(fresh){
+    if(fresh){
+      orderSeed = shuffledIndices();
+      const items = orderSeed.map(i=>PLAYERS[i]);
+      sorter = new MergeSorter(items);
+      comparisonsMade = 0;
+    }
+    showScreen('sort');
+    renderCurrentPair();
+  }
+
+  function makeDecision(d){
+    if(!sorter || sorter.done) return;
+    sorter.decide(d);
+    comparisonsMade++;
+    renderCurrentPair();
+  }
+
+  function undo(){
+    if(!sorter) return;
+    if(sorter.undo()){
+      comparisonsMade = Math.max(0, comparisonsMade-1);
+      showScreen('sort');
+      renderCurrentPair();
+    }
+  }
+
+  function finishSorting(){
+    showScreen('results');
+    renderResults();
+  }
+
+  function renderResults(){
+    const results = sorter.result();
+    const body = el('resultsBody');
+    body.innerHTML = results.map((p, idx)=>
+      `<tr><td class="rank">${idx+1}</td><td>${escapeHtml(p.name)}</td></tr>`
+    ).join('');
+  }
+
+  function escapeHtml(s){
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  // ---- save / load ----
+  function saveProgress(){
+    if(!sorter) return;
+    const payload = {
+      orderSeed, comparisonsMade,
+      sorterState: sorter.serialize()
+    };
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      flashButton(el('btnSave'), 'Saved!');
+    }catch(e){
+      alert('Could not save (storage unavailable).');
+    }
+  }
+  function flashButton(btn, msg){
+    const old = btn.textContent;
+    btn.textContent = msg;
+    setTimeout(()=>{ btn.textContent = old; }, 1200);
+  }
+  function loadProgress(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return null;
+      return JSON.parse(raw);
+    }catch(e){ return null; }
+  }
+  function hasSave(){
+    return !!loadProgress();
+  }
+  function resumeFromSave(){
+    const payload = loadProgress();
+    if(!payload) return;
+    orderSeed = payload.orderSeed;
+    const items = orderSeed.map(i=>PLAYERS[i]);
+    sorter = MergeSorter.deserialize(items, payload.sorterState);
+    comparisonsMade = payload.comparisonsMade || 0;
+    startSorting(false);
+  }
+  function clearSave(){
+    localStorage.removeItem(STORAGE_KEY);
+  }
+
+  // ---- share link ----
+  function generateShareLink(){
+    const results = sorter.result();
+    const idxStr = results.map(p=>p.id.toString(36)).join('-');
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.hash = 'r=' + idxStr;
+    const link = url.toString();
+    navigator.clipboard?.writeText(link).catch(()=>{});
+    prompt('Shareable link (copied if supported):', link);
+  }
+  function loadFromHash(){
+    const h = window.location.hash;
+    if(h.startsWith('#r=')){
+      const ids = h.slice(3).split('-').map(s=>parseInt(s,36));
+      if(ids.length === N && ids.every(n=>!isNaN(n) && n>=0 && n<N)){
+        const results = ids.map(id=>PLAYERS.find(p=>p.id===id));
+        showScreen('results');
+        const body = el('resultsBody');
+        body.innerHTML = results.map((p, idx)=>
+          `<tr><td class="rank">${idx+1}</td><td>${escapeHtml(p.name)}</td></tr>`
+        ).join('');
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function generateTextList(){
+    const results = sorter.result();
+    const text = results.map((p,idx)=>`${idx+1}. ${p.name}`).join('\n');
+    navigator.clipboard?.writeText(text).then(()=>{
+      flashButton(el('btnGenText'), 'Copied!');
+    }).catch(()=>{
+      prompt('Copy this list:', text);
+    });
+  }
+
+  // ---- wiring ----
+  el('btnStart').addEventListener('click', ()=>startSorting(true));
+  el('btnResume').addEventListener('click', resumeFromSave);
+  el('btnReset').addEventListener('click', ()=>{
+    if(confirm('Clear saved progress and start fresh?')){
+      clearSave();
+      sorter = null; comparisonsMade = 0;
+      showScreen('intro');
+      el('btnResume').style.display = hasSave() ? 'inline-block' : 'none';
+    }
+  });
+
+  el('cardLeft').addEventListener('click', ()=>makeDecision('a'));
+  el('cardRight').addEventListener('click', ()=>makeDecision('b'));
+  el('btnTie').addEventListener('click', ()=>makeDecision('tie'));
+  el('btnUndo').addEventListener('click', undo);
+  el('btnSave').addEventListener('click', saveProgress);
+
+  el('btnGenLink').addEventListener('click', generateShareLink);
+  el('btnGenText').addEventListener('click', generateTextList);
+  el('btnRestart').addEventListener('click', ()=>{
+    clearSave();
+    showScreen('intro');
+  });
+
+  document.addEventListener('keydown', (e)=>{
+    if(!document.getElementById('screen-sort').classList.contains('active')) return;
+    const k = e.key.toLowerCase();
+    if(k === 'arrowleft' || k === 'h'){ makeDecision('a'); }
+    else if(k === 'arrowright' || k === 'l'){ makeDecision('b'); }
+    else if(k === 'arrowup' || k === 'k'){ makeDecision('tie'); }
+    else if(k === 'arrowdown' || k === 'j'){ undo(); }
+    else if(k === 's'){ saveProgress(); }
+  });
+
+  // ---- init ----
+  renderRosterPreview();
+  el('btnResume').style.display = hasSave() ? 'inline-block' : 'none';
+  loadFromHash();
+})();
+</script>
+</body>
+</html>
